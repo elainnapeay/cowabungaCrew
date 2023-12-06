@@ -9,6 +9,8 @@
 #include "riscv.h"
 #include "defs.h"
 
+
+
 void freerange(void *pa_start, void *pa_end);
 
 extern char end[]; // first address after kernel.
@@ -16,7 +18,6 @@ extern char end[]; // first address after kernel.
 
 struct run {
   struct run *next;
-  int ref_count;
 };
 
 struct {
@@ -24,9 +25,16 @@ struct {
   struct run *freelist;
 } kmem;
 
+//reference count
+int refcount[PHYSTOP / 4096];
+
 void
 kinit()
 {
+  for(int i = 0; i < PHYSTOP / 4096; i++)
+  {
+     refcount[i] = 0;
+  }
   initlock(&kmem.lock, "kmem");
   freerange(end, (void*)PHYSTOP);
 }
@@ -37,16 +45,22 @@ freerange(void *pa_start, void *pa_end)
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  {
+    refcount[(uint64)p / 4096] = 1;
     kfree(p);
+  }
 }
 
-void 
-kget(void *pa) {
-    struct run *r = (struct run*)pa;
-    acquire(&kmem.lock);
-    r->ref_count++;
-    release(&kmem.lock);
+void
+incrementref(uint64 pa)
+{
+   int pagenum = pa / 4096;
+   acquire(&kmem.lock);
+   refcount[pagenum] += 1;
+   release(&kmem.lock);
 }
+
+
 // Free the page of physical memory pointed at by pa,
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
@@ -59,17 +73,27 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
+  //lock to avoid freeing same page at same time
+  acquire(&kmem.lock);
+  int pagenum = (uint64)pa / 4096;
+  refcount[pagenum] -= 1;
+  int temp = refcount[pagenum];
+  release(&kmem.lock);
+
+  //don't free unless refcount it 0
+  if(temp > 0)
+  {
+    return;
+  }
+
+  // Fill with junk to catch dangling refs.
+  memset(pa, 1, PGSIZE);
+
   r = (struct run*)pa;
 
   acquire(&kmem.lock);
-  r->ref_count--;
-  if (r->ref_count == 0) {
-    // Fill with junk to catch dangling refs.
-    memset(pa, 1, PGSIZE);
-
-    r->next = kmem.freelist;
-    kmem.freelist = r;
-  }
+  r->next = kmem.freelist;
+  kmem.freelist = r;
   release(&kmem.lock);
 }
 
@@ -84,10 +108,17 @@ kalloc(void)
   acquire(&kmem.lock);
   r = kmem.freelist;
   if(r)
-    kmem.freelist = r->next;
+  {
+     kmem.freelist = r->next;
+     int pagenum = (uint64)r / 4096; //calculate page number
+     refcount[pagenum] = 1;
+  }	  
+  
   release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+

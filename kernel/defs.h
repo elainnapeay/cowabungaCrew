@@ -63,8 +63,6 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
-//TODO: addkget
-void           kget(void *);
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -144,6 +142,7 @@ int             fetchaddr(uint64, uint64*);
 void            syscall();
 
 // trap.c
+int		cowfault(pagetable_t pagetable, uint64 va); //definition for cowfault
 extern uint     ticks;
 void            trapinit(void);
 void            trapinithart(void);
@@ -158,6 +157,7 @@ void            uartputc_sync(int);
 int             uartgetc(void);
 
 // vm.c
+void 		incrementref(uint64 pa); //definition for reference increment
 void            kvminit(void);
 void            kvminithart(void);
 void            kvmmap(pagetable_t, uint64, uint64, uint64, int);

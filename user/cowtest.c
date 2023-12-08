@@ -57,7 +57,7 @@ threetest()
   int sz = phys_size / 4;
   int pid1, pid2;
 
-  printf("three: ");
+  printf("three: zombie!\n");
   
   char *p = sbrk(sz);
   if(p == (char*)0xffffffffffffffffL){

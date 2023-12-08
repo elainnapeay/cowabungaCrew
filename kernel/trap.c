@@ -44,6 +44,7 @@ cowfault(pagetable_t pagetable, uint64 va)
    {
       return -1;
    }
+   
    //case for illegal addresses
    //PTE_V -> indicates whether pte is present
    //PTE_U -> controls access from user
@@ -80,12 +81,11 @@ cowfault(pagetable_t pagetable, uint64 va)
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
 //
-void
-usertrap(void)
+void usertrap(void)
 {
   int which_dev = 0;
 
-  if((r_sstatus() & SSTATUS_SPP) != 0)
+  if ((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
 
   // send interrupts and exceptions to kerneltrap(),
@@ -93,14 +93,14 @@ usertrap(void)
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
-  
+
   // save user program counter.
   p->trapframe->epc = r_sepc();
-  
-  if(r_scause() == 8){
+
+  if (r_scause() == 8) {
     // system call
 
-    if(killed(p))
+    if (killed(p))
       exit(-1);
 
     // sepc points to the ecall instruction,
@@ -112,39 +112,35 @@ usertrap(void)
     intr_on();
 
     syscall();
-    //catch write faults
-  } else if(r_scause() == 0xf){
-    if(r_stval() == 0) {
-      // Handle the case when r_stval() is equal to 0
-      // ...
-      //printf("usertrap(): writetext address 0\n");
-      p->killed = 1; //no matter the failure, kill process
+    // catch write faults
+  } else if (r_scause() == 0xf) {
+    // Handle the case when r_stval() is equal to 0
+    if (r_stval() == 0) {
+      // printf("usertrap(): writetext address 0\n");
+      p->killed = 1; // no matter the failure, kill process
     } else {
-      if(cowfault(p->pagetable, r_stval()) < 0)
-      {
-         p->killed = 1; //no matter the failure, kill process
+      if (cowfault(p->pagetable, r_stval()) < 0) {
+        p->killed = 1; // no matter the failure, kill process
       }
     }
-  } else if(r_scause() == 13){
+  } else if (r_scause() == 13) {
     // handle page fault
-    if(cowfault(p->pagetable, r_stval()) < 0)
-    {
-       p->killed = 1; //no matter the failure, kill process
+    if (cowfault(p->pagetable, r_stval()) < 0) {
+      p->killed = 1; // no matter the failure, kill process
     }
-  } else if((which_dev = devintr()) != 0){
+  } else if ((which_dev = devintr()) != 0) {
     // ok
-  } 
-  else {
+  } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     setkilled(p);
   }
 
-  if(killed(p))
+  if (killed(p))
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if (which_dev == 2)
     yield();
 
   usertrapret();
